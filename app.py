@@ -14,34 +14,29 @@ st.write(
 )
 
 
-# Connect to Google Sheets with explicit error handling
 @st.cache_resource
 def init_google_sheets():
-  try:
-    scope = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive",
-    ]
-    creds_dict = dict(st.secrets["gcp_service_account"])
-    # Clean up newline formatting just in case
-    if "private_key" in creds_dict:
-      creds_dict["private_key"] = creds_dict["private_key"].replace(
-          "\\n", "\n"
-      )
+  scope = [
+      "https://www.googleapis.com/auth/spreadsheets",
+      "https://www.googleapis.com/auth/drive",
+  ]
+  creds_dict = dict(st.secrets["gcp_service_account"])
+  if "private_key" in creds_dict:
+    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-    client = gspread.authorize(creds)
-    sheet = client.open("Farm_Labor_Expenses").sheet1
-    return sheet, None
-  except Exception as e:
-    return None, str(e)
+  creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+  client = gspread.authorize(creds)
+  # Open directly using your spreadsheet ID so lookup never fails
+  sheet = client.open_by_key(
+      "1CaVmS0UFlw3pFab_DzxxcSODbaIKzWoyxdyR2FvFvfc"
+  ).sheet1
+  return sheet
 
 
-with st.spinner("Connecting to Google Sheets..."):
-  sheet, error_msg = init_google_sheets()
-
-if error_msg:
-  st.error(f"⚠️ Connection Failed: {error_msg}")
+try:
+  sheet = init_google_sheets()
+except Exception as e:
+  st.error(f"⚠️ Connection Error: {e}")
   st.stop()
 
 # User selection
@@ -50,7 +45,6 @@ current_user = st.sidebar.selectbox(
     "Who is making this entry?", ["Pavan", "Dad", "Brother"]
 )
 
-# Main Entry Form
 with st.form("expense_form", clear_on_submit=True):
   st.subheader("➕ Add New Entry")
 
@@ -106,7 +100,7 @@ try:
     st.info("No entries yet. Fill out the form above to add your first record!")
 except Exception as e:
   st.info(
-      "Sheet is connected! Add your first record above to start tracking."
+      "Sheet is connected successfully! Add your first record above to start"
+      " tracking."
   )
-
 
