@@ -1,3 +1,4 @@
+
 from datetime import date
 from google.oauth2.service_account import Credentials
 import gspread
@@ -61,6 +62,13 @@ with tab1:
         "Worker Name / Item Description",
         placeholder="e.g., Ramaiah (Labor) or Potash Fertilizer",
     )
+    
+    # Optional Labor Phone Number field
+    labor_phone = st.text_input(
+        "Labor Phone Number (Optional - for WhatsApp notification)",
+        placeholder="e.g., 9876543210",
+    )
+
     amount = st.number_input("Amount (₹)", min_value=0.0, step=100.0)
     notes = st.text_area(
         "Notes (Optional)", placeholder="e.g., Worked on Arecanut plot"
@@ -74,6 +82,9 @@ with tab1:
             "Please fill in the worker name/description and a valid amount."
         )
       else:
+        # Clean phone number format (remove spaces)
+        clean_phone = labor_phone.strip().replace(" ", "")
+        
         row_data = [
             str(entry_date),
             current_user,
@@ -81,9 +92,25 @@ with tab1:
             name_details,
             amount,
             notes,
+            clean_phone,
         ]
         sheet.append_row(row_data)
         st.success(f"✅ Entry saved successfully by {current_user}!")
+
+        # If phone number was provided, generate an instant WhatsApp link!
+        if clean_phone:
+          msg = (
+              f"Hello {name_details}, your wage entry of ₹{amount} for"
+              f" {entry_type} on {entry_date} has been recorded. - Farm Team"
+          )
+          wa_url = f"https://wa.me/91{clean_phone}?text={urllib_quote(msg)}" if 'urllib_quote' else f"https://wa.me/91{clean_phone}?text=Wage%20Recorded%20-%20Amount:%20₹{amount}"
+          st.markdown(
+              f"### 💬 Quick WhatsApp Notification\nTap below to send wage"
+              f" details to **{name_details}**:\n👉 [Open WhatsApp to Send"
+              f" Message](https://wa.me/91{clean_phone}?text=Hello%20{name_details},%20your%20wage%20entry%20of%20₹{amount}%20for%20{entry_type}%20on%20{entry_date}%20has%20been%20recorded.)",
+              unsafe_allow_html=True,
+          )
+
         st.rerun()
 
 # --- TAB 2: VIEW, EDIT & DELETE ---
@@ -100,21 +127,16 @@ with tab2:
       )
       st.metric(label="Total Expenses Recorded", value=f"₹ {total_spent:,.2f}")
 
-      # Show table with row indices so user knows which row to edit/delete
       df_display = df.copy()
-      df_display.insert(0, "Row_ID", range(2, len(df) + 2))  
-      # Row 2 corresponds to Google Sheets row index (since row 1 is headers)
-
+      df_display.insert(0, "Row_ID", range(2, len(df) + 2))
       st.dataframe(df_display, use_container_width=True)
 
       st.markdown("---")
       st.write("### Modify or Delete an Entry")
 
-      # Pick a row to modify based on row ID
       row_options = list(range(2, len(df) + 2))
       selected_row = st.selectbox("Select Row ID to Edit or Delete", row_options)
 
-      # Get current values of that row
       row_idx = selected_row - 2
       curr_date = df.loc[row_idx, "Date"] if "Date" in df.columns else ""
       curr_user = (
@@ -128,6 +150,11 @@ with tab2:
       )
       curr_amt = df.loc[row_idx, "Amount"] if "Amount" in df.columns else 0.0
       curr_notes = df.loc[row_idx, "Notes"] if "Notes" in df.columns else ""
+      curr_phone = (
+          df.loc[row_idx, "Labor_Phone"]
+          if "Labor_Phone" in df.columns
+          else ""
+      )
 
       with st.form("edit_form"):
         new_date = st.text_input("Date (YYYY-MM-DD)", value=str(curr_date))
@@ -154,6 +181,7 @@ with tab2:
             ),
         )
         new_desc = st.text_input("Worker Name / Description", value=str(curr_desc))
+        new_phone = st.text_input("Labor Phone Number", value=str(curr_phone))
         new_amt = st.number_input("Amount (₹)", value=float(curr_amt))
         new_notes = st.text_area("Notes", value=str(curr_notes))
 
@@ -162,7 +190,6 @@ with tab2:
         delete_btn = col_delete.form_submit_button("🗑️ Delete Row")
 
         if update_btn:
-          # Update row in Google Sheets (Row index in gspread starts at 1, headers are row 1)
           updated_values = [
               new_date,
               curr_user,
@@ -170,9 +197,9 @@ with tab2:
               new_desc,
               new_amt,
               new_notes,
+              new_phone,
           ]
-          sheet.row_values(selected_row)  # safety check
-          sheet.update(f"A{selected_row}:F{selected_row}", [updated_values])
+          sheet.update(f"A{selected_row}:G{selected_row}", [updated_values])
           st.success(f"Successfully updated Row {selected_row}!")
           st.rerun()
 
@@ -184,5 +211,4 @@ with tab2:
     else:
       st.info("No entries found to manage.")
   except Exception as e:
-     st.info("Loading records or sheet is empty...")
-
+    st.info("Loading records or sheet is empty...")
