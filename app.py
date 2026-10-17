@@ -36,6 +36,20 @@ except Exception as e:
   st.error(f"⚠️ Connection Error: {e}")
   st.stop()
 
+# Fetch existing data for autocomplete & summaries
+try:
+  data = sheet.get_all_records()
+  df = pd.DataFrame(data)
+except Exception:
+  df = pd.DataFrame()
+
+# Get unique list of previously entered worker names for autocomplete
+existing_workers = []
+if not df.empty and "Name_or_Details" in df.columns:
+  existing_workers = sorted(
+      [str(x) for x in df["Name_or_Details"].unique() if str(x).strip() != ""]
+  )
+
 # User selection
 st.sidebar.header("User Profile")
 current_user = st.sidebar.selectbox(
@@ -43,7 +57,9 @@ current_user = st.sidebar.selectbox(
 )
 
 # Navigation Tabs
-tab1, tab2 = st.tabs(["➕ Add Entry", "✏️ View / Edit / Delete Records"])
+tab1, tab2, tab3 = st.tabs(
+    ["➕ Add Entry", "👥 Worker Summary", "✏️ View / Edit / Delete"]
+)
 
 # --- TAB 1: ADD ENTRY ---
 with tab1:
@@ -58,13 +74,28 @@ with tab1:
           "Type", ["Labor Wage", "Material/Fertilizer", "General Farm Expense"]
       )
 
-    name_details = st.text_input(
-        "Worker Name / Item Description",
-        placeholder="e.g., Ramaiah (Labor) or Potash Fertilizer",
+    # Smart Worker Name Input with Autocomplete suggestion option
+    st.write("Worker Name / Item Description")
+    selected_worker_choice = st.selectbox(
+        "Choose from saved names or type a new one below",
+        ["-- Type New Name --"] + existing_workers,
     )
-    
+
+    manual_worker_input = st.text_input(
+        "Or type new worker / item name here",
+        placeholder="e.g., Giri",
+    )
+
+    # Determine final name
+    if manual_worker_input.strip() != "":
+      name_details = manual_worker_input.strip()
+    elif selected_worker_choice != "-- Type New Name --":
+      name_details = selected_worker_choice
+    else:
+      name_details = ""
+
     labor_phone = st.text_input(
-        "Labor Phone Number (Optional - for WhatsApp notification)",
+        "Labor Phone Number (Optional)",
         placeholder="e.g., 9876543210",
     )
 
@@ -78,11 +109,11 @@ with tab1:
     if submitted:
       if not name_details or amount <= 0:
         st.warning(
-            "Please fill in the worker name/description and a valid amount."
+            "Please provide a worker name/description and a valid amount."
         )
       else:
         clean_phone = labor_phone.strip().replace(" ", "")
-        
+
         row_data = [
             str(entry_date),
             current_user,
@@ -93,7 +124,7 @@ with tab1:
             clean_phone,
         ]
         sheet.append_row(row_data)
-        st.success(f"✅ Entry saved successfully by {current_user}!")
+        st.success(f"✅ Entry saved successfully for **{name_details}**!")
 
         if clean_phone:
           msg = (
@@ -102,22 +133,41 @@ with tab1:
           )
           encoded_msg = urllib.parse.quote(msg)
           st.markdown(
-              f"### 💬 Quick WhatsApp Notification\nTap below to send wage"
-              f" details to **{name_details}**:\n👉 [Open WhatsApp to Send"
+              f"### 💬 Quick WhatsApp Notification\n👉 [Open WhatsApp to Send"
               f" Message](https://wa.me/91{clean_phone}?text={encoded_msg})",
               unsafe_allow_html=True,
           )
 
         st.rerun()
 
-# --- TAB 2: VIEW, EDIT & DELETE ---
+# --- TAB 2: WORKER SUMMARY ---
 with tab2:
+  st.subheader("👥 Individual Worker Summaries")
+  if not df.empty and "Name_or_Details" in df.columns:
+    chosen_worker = st.selectbox(
+        "Select Worker to View Summary", existing_workers
+    )
+
+    if chosen_worker:
+      worker_df = df[df["Name_or_Details"] == chosen_worker]
+      total_paid = (
+          worker_df["Amount"].sum() if "Amount" in worker_df.columns else 0.0
+      )
+      total_days = len(worker_df)
+
+      st.metric(label=f"Total Paid to {chosen_worker}", value=f"₹ {total_paid:,.2f}")
+      st.metric(label=f"Total Entries / Work Days", value=total_days)
+
+      st.write(f"### History for {chosen_worker}")
+      st.dataframe(worker_df, use_container_width=True)
+  else:
+    st.info("No worker records found yet.")
+
+# --- TAB 3: VIEW, EDIT & DELETE ---
+with tab3:
   st.subheader("Manage Past Records")
 
   try:
-    data = sheet.get_all_records()
-    df = pd.DataFrame(data)
-
     if not df.empty:
       total_spent = (
           df["Amount"].sum() if "Amount" in df.columns else 0.0
@@ -209,4 +259,3 @@ with tab2:
       st.info("No entries found to manage.")
   except Exception as e:
     st.info("Loading records or sheet is empty...")
-
