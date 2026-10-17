@@ -1,6 +1,6 @@
+
 from datetime import date
-from google.oauth2.service_account import Credentials
-import gspread
+from gspread_dataframe import set_with_dataframe
 import pandas as pd
 import streamlit as st
 
@@ -13,34 +13,25 @@ st.write(
     "Shared family app for tracking daily labor, wages, and farm expenses."
 )
 
-
-@st.cache_resource
-def init_google_sheets():
-  scope = [
-      "https://www.googleapis.com/auth/spreadsheets",
-      "https://www.googleapis.com/auth/drive",
-  ]
-  creds_dict = dict(st.secrets["gcp_service_account"])
-  creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-  client = gspread.authorize(creds)
-  sheet = client.open("Farm_Labor_Expenses").sheet1
-  return sheet
-
-
+# Connect to Google Sheets using Streamlit's native connection
 try:
-  sheet = init_google_sheets()
+  conn = st.connection("gsheets", type="GSheetsConnection")
+  # Read existing data from the sheet named Farm_Labor_Expenses
+  df_data = conn.read(worksheet="Sheet1", ttl=0)
 except Exception as e:
   st.error(
-      "⚠️ Database connection failed. Please check your Google Sheets secret"
-      " settings."
+      "⚠️ Database connection failed. Please make sure [connections.gsheets]"
+      " is set up in Secrets."
   )
   st.stop()
 
+# User selection
 st.sidebar.header("User Profile")
 current_user = st.sidebar.selectbox(
     "Who is making this entry?", ["Pavan", "Dad", "Brother"]
 )
 
+# Main Entry Form
 with st.form("expense_form", clear_on_submit=True):
   st.subheader("➕ Add New Entry")
 
@@ -69,30 +60,27 @@ with st.form("expense_form", clear_on_submit=True):
           "Please fill in the worker name/description and a valid amount."
       )
     else:
-      row_data = [
-          str(entry_date),
-          current_user,
-          entry_type,
-          name_details,
-          amount,
-          notes,
-      ]
-      sheet.append_row(row_data)
+      # Append new row using the connection
+      new_row = pd.DataFrame([{
+          "Date": str(entry_date),
+          "Added_By": current_user,
+          "Category": entry_type,
+          "Name_or_Details": name_details,
+          "Amount": amount,
+          "Notes": notes,
+      }])
+      updated_df = pd.concat([df_data, new_row], ignore_index=True)
+      conn.update(worksheet="Sheet1", data=updated_df)
       st.success(f"✅ Entry saved successfully by {current_user}!")
       st.rerun()
 
 st.markdown("---")
 st.subheader("📊 Recent Records & Summary")
 
-try:
-  data = sheet.get_all_records()
-  df = pd.DataFrame(data)
-
-  if not df.empty:
-    total_spent = df["Amount"].sum()
+if df_data is not None and not df_data.empty:
+  if "Amount" in df_data.columns:
+    total_spent = df_data["Amount"].sum()
     st.metric(label="Total Expenses Recorded", value=f"₹ {total_spent:,.2f}")
-    st.dataframe(df, use_container_width=True)
-  else:
-    st.info("No entries yet. Fill out the form above to add your first record!")
-except Exception as e:
-  st.info("No entries found or loading data...")
+  st.dataframe(df_data, use_container_width=True)
+else:
+  st.info("No entries yet. Fill out the form above to add your first record!")
