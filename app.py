@@ -1,4 +1,3 @@
-
 from datetime import date
 from google.oauth2.service_account import Credentials
 import gspread
@@ -15,7 +14,6 @@ st.write(
 )
 
 
-# Safe connection with fallback so it never infinite-loads
 @st.cache_resource
 def init_google_sheets():
   try:
@@ -24,21 +22,27 @@ def init_google_sheets():
         "https://www.googleapis.com/auth/drive",
     ]
     creds_dict = dict(st.secrets["gcp_service_account"])
+
+    # Automatically fix private key newlines if escaped
+    if "private_key" in creds_dict:
+      creds_dict["private_key"] = creds_dict["private_key"].replace(
+          "\\n", "\n"
+      )
+
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     client = gspread.authorize(creds)
     sheet = client.open("Farm_Labor_Expenses").sheet1
     return sheet
   except Exception as e:
+    # This will show the exact technical reason on your screen
+    st.error(f"⚠️ Connection Error Details: {e}")
     return None
 
 
 sheet = init_google_sheets()
 
 if sheet is None:
-  st.error(
-      "⚠️ Database connection failed. Please check your Secrets or Google"
-      " Sheet name (`Farm_Labor_Expenses`)."
-  )
+  st.stop()
 else:
   # User selection
   st.sidebar.header("User Profile")
@@ -103,3 +107,4 @@ else:
       )
   except Exception as e:
     st.info("No entries found or loading data...")
+
