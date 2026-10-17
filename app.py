@@ -1,6 +1,6 @@
-
 from datetime import date
 from google.oauth2.service_account import Credentials
+import urllib.parse
 import gspread
 import pandas as pd
 import streamlit as st
@@ -63,7 +63,6 @@ with tab1:
         placeholder="e.g., Ramaiah (Labor) or Potash Fertilizer",
     )
     
-    # Optional Labor Phone Number field
     labor_phone = st.text_input(
         "Labor Phone Number (Optional - for WhatsApp notification)",
         placeholder="e.g., 9876543210",
@@ -82,7 +81,6 @@ with tab1:
             "Please fill in the worker name/description and a valid amount."
         )
       else:
-        # Clean phone number format (remove spaces)
         clean_phone = labor_phone.strip().replace(" ", "")
         
         row_data = [
@@ -97,17 +95,16 @@ with tab1:
         sheet.append_row(row_data)
         st.success(f"✅ Entry saved successfully by {current_user}!")
 
-        # If phone number was provided, generate an instant WhatsApp link!
         if clean_phone:
           msg = (
               f"Hello {name_details}, your wage entry of ₹{amount} for"
               f" {entry_type} on {entry_date} has been recorded. - Farm Team"
           )
-          wa_url = f"https://wa.me/91{clean_phone}?text={urllib_quote(msg)}" if 'urllib_quote' else f"https://wa.me/91{clean_phone}?text=Wage%20Recorded%20-%20Amount:%20₹{amount}"
+          encoded_msg = urllib.parse.quote(msg)
           st.markdown(
               f"### 💬 Quick WhatsApp Notification\nTap below to send wage"
               f" details to **{name_details}**:\n👉 [Open WhatsApp to Send"
-              f" Message](https://wa.me/91{clean_phone}?text=Hello%20{name_details},%20your%20wage%20entry%20of%20₹{amount}%20for%20{entry_type}%20on%20{entry_date}%20has%20been%20recorded.)",
+              f" Message](https://wa.me/91{clean_phone}?text={encoded_msg})",
               unsafe_allow_html=True,
           )
 
@@ -212,3 +209,4 @@ with tab2:
       st.info("No entries found to manage.")
   except Exception as e:
     st.info("Loading records or sheet is empty...")
+
