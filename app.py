@@ -16,27 +16,37 @@ st.write(
 
 @st.cache_resource
 def init_google_sheets():
-  scope = [
-      "https://www.googleapis.com/auth/spreadsheets",
-      "https://www.googleapis.com/auth/drive",
-  ]
-  creds_dict = dict(st.secrets["gcp_service_account"])
-  if "private_key" in creds_dict:
-    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+  try:
+    scope = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive",
+    ]
+    creds_dict = dict(st.secrets["gcp_service_account"])
+    if "private_key" in creds_dict:
+      creds_dict["private_key"] = creds_dict["private_key"].replace(
+          "\\n", "\n"
+      )
 
-  creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-  client = gspread.authorize(creds)
-  # Open directly using your spreadsheet ID so lookup never fails
-  sheet = client.open_by_key(
-      "1CaVmS0UFlw3pFab_DzxxcSODbaIKzWoyxdyR2FvFvfc"
-  ).sheet1
-  return sheet
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+    client = gspread.authorize(creds)
+    # Open directly using your spreadsheet ID
+    sheet = client.open_by_key(
+        "1CaVmS0UFlw3pFab_DzxxcSODbaIKzWoyxdyR2FvFvfc"
+    ).sheet1
+    return sheet, None
+  except Exception as e:
+    # This will show the exact error name and details on your screen
+    return None, f"{type(e).__name__}: {str(e)}"
 
 
-try:
-  sheet = init_google_sheets()
-except Exception as e:
-  st.error(f"⚠️ Connection Error: {e}")
+sheet, error_msg = init_google_sheets()
+
+if error_msg:
+  st.error(f"⚠️ Detailed Error: {error_msg}")
+  st.info(
+      "💡 Tip: If this says 'SpreadsheetNotFound', make sure your Google Sheet"
+      " is shared with: farm-app-account@neon-reporter-457403-d3.iam.gserviceaccount.com"
+  )
   st.stop()
 
 # User selection
