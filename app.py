@@ -36,14 +36,14 @@ except Exception as e:
   st.error(f"⚠️ Connection Error: {e}")
   st.stop()
 
-# Fetch existing data for autocomplete & summaries
+# Fetch existing data
 try:
   data = sheet.get_all_records()
   df = pd.DataFrame(data)
 except Exception:
   df = pd.DataFrame()
 
-# Get unique list of previously entered worker names for autocomplete
+# Get unique worker names
 existing_workers = []
 if not df.empty and "Name_or_Details" in df.columns:
   existing_workers = sorted(
@@ -58,35 +58,40 @@ current_user = st.sidebar.selectbox(
 
 # Navigation Tabs
 tab1, tab2, tab3 = st.tabs(
-    ["➕ Add Entry", "👥 Worker Summary", "✏️ View / Edit / Delete"]
+    ["➕ Add Entry", "👥 Worker Summary & Advances", "✏️ View / Edit / Delete"]
 )
 
 # --- TAB 1: ADD ENTRY ---
 with tab1:
   with st.form("expense_form", clear_on_submit=True):
-    st.subheader("Add New Daily Record")
+    st.subheader("Add New Daily Record / Advance")
 
     col1, col2 = st.columns(2)
     with col1:
       entry_date = st.date_input("Date", date.today())
     with col2:
       entry_type = st.selectbox(
-          "Type", ["Labor Wage", "Material/Fertilizer", "General Farm Expense"]
+          "Type",
+          [
+              "Labor Wage",
+              "Labor Advance Given",
+              "Clear Advance",
+              "Material/Fertilizer",
+              "General Farm Expense",
+          ],
       )
 
-    # Smart Worker Name Input with Autocomplete suggestion option
     st.write("Worker Name / Item Description")
     selected_worker_choice = st.selectbox(
-        "Choose from saved names or type a new one below",
+        "Choose from saved names or type below",
         ["-- Type New Name --"] + existing_workers,
     )
 
     manual_worker_input = st.text_input(
-        "Or type new worker / item name here",
+        "Or type worker / item name here",
         placeholder="e.g., Giri",
     )
 
-    # Determine final name
     if manual_worker_input.strip() != "":
       name_details = manual_worker_input.strip()
     elif selected_worker_choice != "-- Type New Name --":
@@ -101,7 +106,8 @@ with tab1:
 
     amount = st.number_input("Amount (₹)", min_value=0.0, step=100.0)
     notes = st.text_area(
-        "Notes (Optional)", placeholder="e.g., Worked on Arecanut plot"
+        "Notes (Optional)",
+        placeholder="e.g., Advance given for festival / Cleared via wage deduction",
     )
 
     submitted = st.form_submit_button("Save Entry")
@@ -126,10 +132,14 @@ with tab1:
         sheet.append_row(row_data)
         st.success(f"✅ Entry saved successfully for **{name_details}**!")
 
-        if clean_phone:
+        if clean_phone and entry_type in [
+            "Labor Wage",
+            "Labor Advance Given",
+            "Clear Advance",
+        ]:
           msg = (
-              f"Hello {name_details}, your wage entry of ₹{amount} for"
-              f" {entry_type} on {entry_date} has been recorded. - Farm Team"
+              f"Hello {name_details}, your entry for {entry_type} of ₹{amount}"
+              f" on {entry_date} has been recorded. - Farm Team"
           )
           encoded_msg = urllib.parse.quote(msg)
           st.markdown(
@@ -140,25 +150,51 @@ with tab1:
 
         st.rerun()
 
-# --- TAB 2: WORKER SUMMARY ---
+# --- TAB 2: WORKER SUMMARY & ADVANCE BALANCES ---
 with tab2:
-  st.subheader("👥 Individual Worker Summaries")
+  st.subheader("👥 Worker Summaries & Active Advances")
   if not df.empty and "Name_or_Details" in df.columns:
     chosen_worker = st.selectbox(
-        "Select Worker to View Summary", existing_workers
+        "Select Worker to View Account", existing_workers
     )
 
     if chosen_worker:
       worker_df = df[df["Name_or_Details"] == chosen_worker]
-      total_paid = (
-          worker_df["Amount"].sum() if "Amount" in worker_df.columns else 0.0
+
+      # Calculate Active Advance Balance (Advances Given minus Clearances)
+      advances_given = (
+          worker_df[worker_df["Category"] == "Labor Advance Given"]["Amount"].sum()
+          if "Category" in worker_df.columns and "Amount" in worker_df.columns
+          else 0.0
       )
-      total_days = len(worker_df)
+      advances_cleared = (
+          worker_df[worker_df["Category"] == "Clear Advance"]["Amount"].sum()
+          if "Category" in worker_df.columns and "Amount" in worker_df.columns
+          else 0.0
+      )
+      active_advance_balance = advances_given - advances_cleared
 
-      st.metric(label=f"Total Paid to {chosen_worker}", value=f"₹ {total_paid:,.2f}")
-      st.metric(label=f"Total Entries / Work Days", value=total_days)
+      total_wages = (
+          worker_df[worker_df["Category"] == "Labor Wage"]["Amount"].sum()
+          if "Category" in worker_df.columns and "Amount" in worker_df.columns
+          else 0.0
+      )
+      total_days = len(worker_df[worker_df["Category"] == "Labor Wage"])
 
-      st.write(f"### History for {chosen_worker}")
+      col_a, col_b = st.columns(2)
+      with col_a:
+        st.metric(
+            label=f"🔴 Active Advance Due",
+            value=f"₹ {active_advance_balance:,.2f}",
+        )
+      with col_b:
+        st.metric(
+            label=f"🟢 Total Wages Paid", value=f"₹ {total_wages:,.2f}"
+        )
+
+      st.metric(label=f"Total Work Days Logged", value=total_days)
+
+      st.write(f"### Full Transaction History for {chosen_worker}")
       st.dataframe(worker_df, use_container_width=True)
   else:
     st.info("No worker records found yet.")
@@ -209,18 +245,24 @@ with tab3:
             "Type",
             [
                 "Labor Wage",
+                "Labor Advance Given",
+                "Clear Advance",
                 "Material/Fertilizer",
                 "General Farm Expense",
             ],
             index=(
                 [
                     "Labor Wage",
+                    "Labor Advance Given",
+                    "Clear Advance",
                     "Material/Fertilizer",
                     "General Farm Expense",
                 ].index(curr_type)
                 if curr_type
                 in [
                     "Labor Wage",
+                    "Labor Advance Given",
+                    "Clear Advance",
                     "Material/Fertilizer",
                     "General Farm Expense",
                 ]
@@ -259,3 +301,4 @@ with tab3:
       st.info("No entries found to manage.")
   except Exception as e:
     st.info("Loading records or sheet is empty...")
+
